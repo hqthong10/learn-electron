@@ -1,0 +1,15 @@
+.studio-page {
+    display: flex;
+    flex-flow: column;
+
+  .iframe-container{
+    width: 100%;
+  }
+
+  .preview-container {
+    flex: none;
+    padding: 20px;
+    min-height: 200px;
+    background-color: #f2f2f2;
+  }
+}

@@ -1,0 +1,32 @@
+{
+  "compilerOptions": {
+    "target": "ES6",
+    "module": "CommonJS",
+    "jsx": "react-jsx",
+    "allowJs": false,
+    "experimentalDecorators": true,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "noImplicitAny": true,
+    "sourceMap": true,
+    "baseUrl": ".",
+    "outDir": "dist",
+    "moduleResolution": "node",
+    "resolveJsonModule": true,
+    "noEmit": true,
+    "removeComments": true,
+
+    "isolatedModules": false,
+    "noImplicitThis": true,
+    "allowSyntheticDefaultImports": true,
+    "strictNullChecks": false,
+    "emitDecoratorMetadata": false,
+
+    "paths": {
+      "*": ["node_modules/*"],
+      "@/*": ["./*"],
+    },
+    "types": ["node", "fs-extra", "uuid"],
+  },
+  "include": ["src/**/*", "obs-api", "src/types.d.ts"],
+}
