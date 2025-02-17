@@ -39,7 +39,8 @@ export class OsnApi {
         if (this.obs) return;
 
         await this.initOBS();
-        this.configureOBS();
+
+        // this.configureOBS();
 
         this.scene = await this.setupScene();
         await this.setupSources();
