@@ -47,6 +47,30 @@ export default function StudioPage() {
       await osnApi.setupPreview({ width, height, x, y })
   }
 
+  const installVirtualCamPlugin = () => {
+    osnApi.installVirtualCamPlugin();
+  }
+  
+  const uninstallVirtualCamPlugin = () => {
+    osnApi.uninstallVirtualCamPlugin();
+  }
+
+  const startVirtualCam = () => {
+    osnApi.startVirtualCam();
+  }
+
+  const stopVirtualCam = () => {
+    osnApi.stopVirtualCam();
+  }
+
+  const StartRecording = async () => {
+    await osnApi.start();
+  }
+
+  const StopRecording = async () => {
+    await osnApi.stop();
+  }
+
   return (
     <div className="studio-page">
         <div className="iframe-container">
@@ -57,7 +81,13 @@ export default function StudioPage() {
         </div>
         <button onClick={init}> init</button>
         <button onClick={preview}> preview</button>
+        <button onClick={installVirtualCamPlugin}>Install Plugin</button>
+        <button onClick={uninstallVirtualCamPlugin}>Uninstall Plugin</button>
+        <button onClick={startVirtualCam}>Start Virtual Camera</button>
+        <button onClick={stopVirtualCam}>Stop Virtual Camera</button>
 
+        <button onClick={StartRecording}>Start Record</button>
+        <button onClick={StopRecording}>Stop Record</button>
     </div>
   );
 }

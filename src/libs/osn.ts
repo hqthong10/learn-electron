@@ -2,6 +2,7 @@ import { v4 as uuid } from 'uuid';
 import path from 'path';
 // import * as obs from '../../obs-api';
 import { Subject } from 'rxjs';
+import { first } from 'rxjs/operators';
 import { fixPathWhenPackaged } from './utils';
 const { ipcRenderer, screen } = window.require('electron');
 import { byOS, OS, getOS } from './operating-systems';
@@ -72,7 +73,8 @@ export class OsnApi {
         console.log('initResult:', initResult);
 
         this.obs.NodeObs.OBS_service_connectOutputSignals((signalInfo: any) => {
-            signals.next(signalInfo);
+            console.log('signalInfo', signalInfo)
+            // signals.next(signalInfo);
         });
 
         this.obs.NodeObs.RegisterSourceCallback((objs: any[]) =>
@@ -96,6 +98,30 @@ export class OsnApi {
         this.setSetting('Output', 'VBitrate', 10000); // 10 Mbps
         this.setSetting('Video', 'FPSCommon', 60);
     };
+
+    isVirtualCamPluginInstalled = () => {
+        return this.obs.NodeObs.OBS_service_isVirtualCamPluginInstalled();
+    }
+      
+    installVirtualCamPlugin = () => {
+        this.obs.NodeObs.OBS_service_installVirtualCamPlugin();
+        return this.obs.NodeObs.OBS_service_isVirtualCamPluginInstalled();
+    }
+      
+    uninstallVirtualCamPlugin = () => {
+        this.obs.NodeObs.OBS_service_uninstallVirtualCamPlugin();
+        return !this.obs.NodeObs.OBS_service_isVirtualCamPluginInstalled();
+    }
+      
+    startVirtualCam = () => {
+        this.obs.NodeObs.OBS_service_createVirtualWebcam("obs-studio-node-example-cam");
+        this.obs.NodeObs.OBS_service_startVirtualWebcam();
+    }
+      
+    stopVirtualCam = () => {
+        this.obs.NodeObs.OBS_service_stopVirtualWebcam();
+        this.obs.NodeObs.OBS_service_removeVirtualWebcam();
+    }
 
     setSetting = (category: string, parameter: any, value: any) => {
         let oldValue;
@@ -289,6 +315,13 @@ export class OsnApi {
         };
     }
 
+    getNextSignalInfo = () => {
+        return new Promise((resolve, reject) => {
+            signals.pipe(first()).subscribe(signalInfo => resolve(signalInfo));
+            setTimeout(() => reject('Output signal timeout'), 30000);
+        });
+    }
+
     busySleep = (sleepDuration: number) => {
         const now = new Date().getTime();
         while (new Date().getTime() < now + sleepDuration) {
@@ -403,5 +436,57 @@ export class OsnApi {
         }
 
         // return { height: displayHeight }
+    }
+
+    start = async () => {
+        let signalInfo: any;
+      
+        console.debug('Starting recording...');
+        this.obs.NodeObs.OBS_service_startRecording();
+      
+        console.debug('Started?');
+        signalInfo = await this.getNextSignalInfo();
+      
+        if (signalInfo.signal === 'Stop') {
+          throw Error(signalInfo.error);
+        }
+      
+        console.debug('Started signalInfo.type:', signalInfo.type, '(expected: "recording")');
+        console.debug('Started signalInfo.signal:', signalInfo.signal, '(expected: "start")');
+        console.debug('Started!');
+    }
+    
+      
+    stop = async () => {
+        let signalInfo: any;
+      
+        console.debug('Stopping recording...');
+        this.obs.NodeObs.OBS_service_stopRecording();
+        console.debug('Stopped?');
+      
+        signalInfo = await this.getNextSignalInfo();
+      
+        console.debug('On stop signalInfo.type:', signalInfo.type, '(expected: "recording")');
+        console.debug('On stop signalInfo.signal:', signalInfo.signal, '(expected: "stopping")');
+      
+        signalInfo = await this.getNextSignalInfo();
+      
+        console.debug('After stop signalInfo.type:', signalInfo.type, '(expected: "recording")');
+        console.debug('After stop signalInfo.signal:', signalInfo.signal, '(expected: "stop")');
+      
+        console.debug('Stopped!');
+    }
+      
+    shutdown = () => {
+        try {
+            this.obs.NodeObs.OBS_service_removeCallback();
+            this.obs.NodeObs.IPC.disconnect();
+        } catch(e) {
+            throw Error('Exception when shutting down OBS process' + e);
+        }
+      
+        console.debug('OBS shutdown successfully');
+      
+        return true;
     }
 }
