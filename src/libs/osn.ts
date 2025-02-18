@@ -41,17 +41,17 @@ export class OsnApi {
 
         await this.initOBS();
 
-        // this.configureOBS();
+        this.configureOBS();
 
-        this.scene = await this.setupScene();
-        await this.setupSources();
+        // this.scene = await this.setupScene();
+        // await this.setupSources();
     };
 
     initOBS = async () => {
         this.pathApp = (await ipcRenderer.invoke('AppPath')) || '';
         this.obs = await import('../../obs-api');
 
-        window['obs'] = this.obs;
+        // window['obs'] = this.obs;
         this.obs.IPC.host(`livecenter-${uuid()}`);
 
         // set path, where OBS Studio is located
