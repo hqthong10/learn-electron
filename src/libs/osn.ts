@@ -354,6 +354,7 @@ export class OsnApi {
 
     getAudioDevices = (type: any, subtype: any) => {
         const dummyDevice = this.obs.InputFactory.create(type, subtype, { device_id: 'does_not_exist' });
+
         const devices = dummyDevice.properties.get('device_id').details.items.map(({ name, value }: { name: any, value: any }) => {
             return { device_id: value, name };
         });
@@ -367,33 +368,34 @@ export class OsnApi {
         this.setSetting('Output', 'Track1Name', 'Mixed: all sources');
         let currentTrack = 2;
 
-        this.getAudioDevices(byOS({ [OS.Windows]: 'wasapi_output_capture', [OS.Mac]: 'coreaudio_output_capture' }), 'desktop-audio').forEach((metadata: any) => {
-            console.log('metadata.device_id',metadata.device_id)
-            // if (metadata.device_id === 'default') return;
-            // const source = this.obs.InputFactory.create(
-            //     byOS({ [OS.Windows]: 'wasapi_output_capture', [OS.Mac]: 'coreaudio_output_capture' }),
-            //     'desktop-audio',
-            //     { device_id: metadata.device_id },
-            // );
-            // this.setSetting('Output', `Track${currentTrack}Name`, metadata.name);
-            // source.audioMixers = 1 | (1 << (currentTrack - 1)); // Bit mask to output to only tracks 1 and current track
-            // this.obs.Global.setOutputSource(currentTrack, source);
-            // currentTrack++;
+        if (getOS() === OS.Windows) {
+            this.getAudioDevices(byOS({ [OS.Windows]: 'wasapi_output_capture', [OS.Mac]: 'coreaudio_output_capture' }), 'desktop-audio').forEach((metadata: any) => {
+                if (metadata.device_id === 'default') return;
+                const source = this.obs.InputFactory.create(
+                    byOS({ [OS.Windows]: 'wasapi_output_capture', [OS.Mac]: 'coreaudio_output_capture' }),
+                    'desktop-audio',
+                    { device_id: metadata.device_id },
+                );
+                this.setSetting('Output', `Track${currentTrack}Name`, metadata.name);
+                source.audioMixers = 1 | (1 << (currentTrack - 1)); // Bit mask to output to only tracks 1 and current track
+                this.obs.Global.setOutputSource(currentTrack, source);
+                currentTrack++;
+            });
+        }
+
+
+        this.getAudioDevices(byOS({ [OS.Windows]: 'wasapi_input_capture', [OS.Mac]: 'coreaudio_input_capture' }), 'mic-audio').forEach((metadata: any) => {
+            if (metadata.device_id === 'default') return;
+            const source = this.obs.InputFactory.create(byOS({ [OS.Windows]: 'wasapi_input_capture', [OS.Mac]: 'coreaudio_input_capture' }), 'mic-audio', {
+                device_id: metadata.device_id,
+            });
+            this.setSetting('Output', `Track${currentTrack}Name`, metadata.name);
+            source.audioMixers = 1 | (1 << (currentTrack - 1)); // Bit mask to output to only tracks 1 and current track
+            this.obs.Global.setOutputSource(currentTrack, source);
+            currentTrack++;
         });
 
-
-        // this.getAudioDevices(byOS({ [OS.Windows]: 'wasapi_input_capture', [OS.Mac]: 'coreaudio_input_capture' }), 'mic-audio').forEach((metadata: any) => {
-        //     if (metadata.device_id === 'default') return;
-        //     const source = this.obs.InputFactory.create(byOS({ [OS.Windows]: 'wasapi_input_capture', [OS.Mac]: 'coreaudio_input_capture' }), 'mic-audio', {
-        //         device_id: metadata.device_id,
-        //     });
-        //     this.setSetting('Output', `Track${currentTrack}Name`, metadata.name);
-        //     source.audioMixers = 1 | (1 << (currentTrack - 1)); // Bit mask to output to only tracks 1 and current track
-        //     this.obs.Global.setOutputSource(currentTrack, source);
-        //     currentTrack++;
-        // });
-
-        // this.setSetting('Output', 'RecTracks', parseInt('1'.repeat(currentTrack - 1), 2)); // Bit mask of used tracks: 1111 to use first four (from available six)
+        this.setSetting('Output', 'RecTracks', parseInt('1'.repeat(currentTrack - 1), 2)); // Bit mask of used tracks: 1111 to use first four (from available six)
 
         console.log('--- End setupSources ---');
     }
@@ -402,20 +404,19 @@ export class OsnApi {
         console.log('-----setup preview-----');
         const winHandle = await ipcRenderer.invoke('getNativeWindowHandle');
 
-        // this.obs.NodeObs.OBS_content_createSourcePreviewDisplay(
-        //     winHandle,
-        //     // remote.BrowserWindow.fromId(remote.getCurrentWindow().id).getNativeWindowHandle(),
-        //     this.scene?.name || 'scene_main', // or use camera source Id here
-        //     // this.displayId,
-        //     // false,
-        //     this.obs.IVideo
-        // );
-
-        this.obs.NodeObs.OBS_content_createDisplay(
+        this.obs.NodeObs.OBS_content_createSourcePreviewDisplay(
             winHandle,
+            this.scene?.name || 'scene_main', // or use camera source Id here
             this.displayId,
-            // this.obs.ERenderingMode.OBS_MAIN_RENDERING
+            false,
+            // 'horizontal'
         );
+
+        // this.obs.NodeObs.OBS_content_createDisplay(
+        //     winHandle,
+        //     this.displayId,
+        //     // this.obs.ERenderingMode.OBS_MAIN_RENDERING
+        // );
 
         // this.obs.NodeObs.OBS_content_setShouldDrawUI(this.displayId, false);
         // this.obs.NodeObs.OBS_content_setPaddingSize(this.displayId, 0);
