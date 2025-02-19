@@ -17,6 +17,8 @@ export class OsnApi {
     nwr: any;
     displayId = 'display1';
     win: any;
+    outputWidth = 1280;
+    outputHeight= 720;
 
     private constructor() {
         // NWR is used to handle display rendering via IOSurface on mac
@@ -44,7 +46,13 @@ export class OsnApi {
         this.configureOBS();
 
         // this.scene = await this.setupScene();
-        // await this.setupSources();
+        this.scene = this.initScene();
+
+        await this.initFirstSource();
+
+        await this.initCamera();
+
+        await this.setupSources();
     };
 
     initOBS = async () => {
@@ -66,27 +74,29 @@ export class OsnApi {
         // OBS Studio configs and logs
         const obsDataPath = fixPathWhenPackaged(path.join(this.pathApp, 'osn-data'));
 
+        // console.log('obsDataPath', obsDataPath);
+
         this.obs.NodeObs.OBS_content_setDayTheme(true);
 
         // Arguments: locale, path to directory where configuration and logs will be stored, your application version
         const initResult = this.obs.NodeObs.OBS_API_initAPI('en-US', obsDataPath, '1.0.0');
-        console.log('initResult:', initResult);
+        // console.log('initResult:', initResult);
 
         this.obs.NodeObs.OBS_service_connectOutputSignals((signalInfo: any) => {
-            console.log('signalInfo', signalInfo)
+            // console.log('signalInfo', signalInfo)
             // signals.next(signalInfo);
         });
 
-        this.obs.NodeObs.RegisterSourceCallback((objs: any[]) =>
-            console.log('RegisterSourceCallback:', objs.map((obj) => obj.name)),
-        );
+        this.obs.NodeObs.RegisterSourceCallback((objs: any[]) => {
+            // console.log('RegisterSourceCallback:', objs.map((obj) => obj.name));
+        });
 
-        console.log(this.obs.NodeObs.GetPermissionsStatus())
+        // console.log(this.obs.NodeObs.GetPermissionsStatus())
 
         this.obs.NodeObs.RequestPermissions((permissions: any) => {
             // this.permissionsUpdated.next(permissions);
-            console.log('permissions', permissions);
-          });
+            // console.log('permissions', permissions);
+        });
     };
 
     configureOBS = () => {
@@ -95,9 +105,87 @@ export class OsnApi {
         this.setSetting('Output', 'RecEncoder', availableEncoders.slice(-1)[0] || 'x264');
         this.setSetting('Output', 'RecFilePath', path.join(this.pathApp, 'videos'));
         this.setSetting('Output', 'RecFormat', 'mp4');
-        this.setSetting('Output', 'VBitrate', 10000); // 10 Mbps
-        this.setSetting('Video', 'FPSCommon', 60);
+        this.setSetting('Output', 'VBitrate', 1920); // ~2 Mbps
+        this.setSetting('Video', 'FPSCommon', 30);
     };
+
+    getSourcesExist = () => {
+        return this.obs.InputFactory.getPublicSources().map((source: any) => source.name);
+    }
+
+    initScene = () => {
+        let scene;
+
+        if(!this.getSourcesExist().includes('scene_main')) {
+            scene = this.obs.SceneFactory.create('scene_main');
+        } else {
+            try {
+                scene = this.obs.SceneFactory.fromName('scene_main') || null;
+            } catch (error) {
+                //
+            }
+        }
+        if (!scene) {
+            console.error('Failed to create scene');
+            return;
+        }
+        return scene;
+    }
+
+    initFirstSource = async () => {
+        // const firstSource = this.obs.InputFactory.create('desktop_video', byOS({ [OS.Windows]: 'monitor_capture', [OS.Mac]: 'display_capture' }));
+        // const firstSource = this.obs.InputFactory.create('image_source', 'desktop_video', {});
+        const firstSource = this.obs.InputFactory.create('image_source', 'desktop_video', {
+            file: '/Users/thonghq/Documents/projects/qthong/learn-electron/videos/image.jpg'
+        });
+        // console.log('firstSource:', firstSource);
+
+        // Update source settings:
+        const { physicalWidth, physicalHeight, aspectRatio } = await this.displayInfo();
+        const settings = firstSource.settings;
+        settings['width'] = physicalWidth;
+        settings['height'] = physicalHeight;
+        // settings['file'] = '/Users/thonghq/Documents/projects/qthong/learn-electron/videos/image.jpg';
+
+        // firstSource.active = true;
+        // firstSource.setupPreview(true);
+        firstSource.update(settings);
+        firstSource.save();
+
+
+        // Set output video size to 1280x720
+        // const outputWidth = 1280;
+        // const outputHeight = Math.round(outputWidth / aspectRatio);
+
+        this.setSetting('Video', 'Base', `${this.outputWidth}x${this.outputHeight}`);
+        this.setSetting('Video', 'Output', `${this.outputWidth}x${this.outputHeight}`);
+        console.log('resolution', `${this.outputWidth}x${this.outputHeight}`)
+        const videoScaleFactor = physicalWidth /this. outputWidth;
+
+        // A scene is necessary here to properly scale captured screen size to output video size
+        const sceneItem = this.scene.add(firstSource);
+
+        console.log('sceneItem', sceneItem);
+        sceneItem.scale = { x: 1.0 / videoScaleFactor, y: 1.0 / videoScaleFactor };
+    }
+
+    initCamera = async () => {
+        // const { physicalWidth, physicalHeight, aspectRatio } = await this.displayInfo();
+
+        // If camera is available, make it 1/3 width of video and place it to right down corner of display
+        const cameraSource = this.getCameraSource();
+        console.log('cameraSource', cameraSource);
+
+        if (cameraSource) {
+            const cameraItem = this.scene.add(cameraSource);
+            const cameraScaleFactor = 1.0 / ((3.0 * cameraSource.width) / this.outputWidth);
+            cameraItem.scale = { x: cameraScaleFactor, y: cameraScaleFactor };
+            cameraItem.position = {
+                x: this.outputWidth - cameraSource.width * cameraScaleFactor - this.outputWidth / 10,
+                y: this.outputHeight - cameraSource.height * cameraScaleFactor - this.outputHeight / 10,
+            };
+        }
+    }
 
     isVirtualCamPluginInstalled = () => {
         return this.obs.NodeObs.OBS_service_isVirtualCamPluginInstalled();
@@ -166,67 +254,6 @@ export class OsnApi {
         return parameterSettings.values.map((value: string) => Object.values(value)[0]);
     };
 
-    setupScene = async () => {
-        // const obsAvailableTypes = this.obs.InputFactory.types();
-        const sources = this.obs.InputFactory.getPublicSources().map((source: any) => source.name);
-
-        let scene;
-        if(!sources.includes('scene_main')) {
-            scene = this.obs.SceneFactory.create('scene_main');
-        } else {
-            try {
-                scene = this.obs.SceneFactory.fromName('scene_main') || null;
-            } catch (error) {
-                //
-            }
-        }
-        if (!scene) {
-            console.error('Failed to create scene');
-            return;
-        }
-        
-        
-        // const videoSource = this.obs.InputFactory.create('desktop_video', byOS({ [OS.Windows]: 'monitor_capture', [OS.Mac]: 'display_capture' }));
-        const videoSource = this.obs.InputFactory.create('image_source', 'desktop_video', {});
-        console.log('videoSource:', videoSource);
-
-        // Update source settings:
-        const { physicalWidth, physicalHeight, aspectRatio } = await this.displayInfo();
-        const settings = videoSource.settings;
-        settings['width'] = physicalWidth;
-        settings['height'] = physicalHeight;
-        videoSource.update(settings);
-        videoSource.save();
-
-        // Set output video size to 1920x1080
-        const outputWidth = 1920;
-        const outputHeight = Math.round(outputWidth / aspectRatio);
-        this.setSetting('Video', 'Base', `${outputWidth}x${outputHeight}`);
-        this.setSetting('Video', 'Output', `${outputWidth}x${outputHeight}`);
-        const videoScaleFactor = physicalWidth / outputWidth;
-
-        // A scene is necessary here to properly scale captured screen size to output video size
-        // const scene = obs.SceneFactory.create('test-scene');
-        const sceneItem = scene.add(videoSource);
-        sceneItem.scale = { x: 1.0 / videoScaleFactor, y: 1.0 / videoScaleFactor };
-
-        // If camera is available, make it 1/3 width of video and place it to right down corner of display
-        const cameraSource = this.getCameraSource();
-        console.log('cameraSource', cameraSource);
-
-        if (cameraSource) {
-            const cameraItem = scene.add(cameraSource);
-            const cameraScaleFactor = 1.0 / ((3.0 * cameraSource.width) / outputWidth);
-            cameraItem.scale = { x: cameraScaleFactor, y: cameraScaleFactor };
-            cameraItem.position = {
-                x: outputWidth - cameraSource.width * cameraScaleFactor - outputWidth / 10,
-                y: outputHeight - cameraSource.height * cameraScaleFactor - outputHeight / 10,
-            };
-        }
-
-        return scene;
-    }
-
     getCameraSource = () => {
         console.log('Trying to set up web camera...');
         // Setup input without initializing any device just to get list of available ones
@@ -241,24 +268,20 @@ export class OsnApi {
                     device: 'does_not_exist',
                 }),
         });
-
-        console.log('dummyInput', dummyInput);
-
-        const _cameraItems = dummyInput.properties.get(byOS({ [OS.Windows]: 'video_device_id', [OS.Mac]: 'device' })).details.items;
-        const cameraItems = _cameraItems.filter((item: any) => item.name.length > 0)
+        
+        const cameraItems = dummyInput.properties.get(byOS({ [OS.Windows]: 'video_device_id', [OS.Mac]: 'device' })).details.items;
+        
+        dummyInput.release();
 
         console.log('cameraItems', cameraItems);
-
-        dummyInput.release();
 
         if (cameraItems.length === 0) {
             console.debug('No camera found!!');
             return null;
         }
 
-        const deviceId = cameraItems[0].value;
-        cameraItems[0].selected = true;
-        console.log('cameraItems[0].name: ' + cameraItems[0].name);
+        const deviceId = cameraItems[1].value;
+        cameraItems[1].selected = true;
 
         const obsCameraInput = byOS({
             [OS.Windows]: () =>
@@ -284,16 +307,16 @@ export class OsnApi {
             }
         }
 
-        // if (obsCameraInput.width === 0) {
-        //     console.debug(`Found camera "${cameraItems[0].name}" doesn't seem to work as its reported width is still zero.`);
-        //     return null;
-        // }
+        if (obsCameraInput.width === 0) {
+            console.log(`Found camera "${cameraItems[1].name}" doesn't seem to work as its reported width is still zero.`);
+            // return null;
+        }
 
         // Way to update settings if needed:
         const settings = obsCameraInput.settings;
         console.debug('Camera settings:', obsCameraInput.settings);
-        settings['width'] = 320;
-        settings['height'] = 240;
+        settings['width'] = 1280;
+        settings['height'] = 720;
         obsCameraInput.update(settings);
         obsCameraInput.save();
 
@@ -339,36 +362,40 @@ export class OsnApi {
     };
 
     setupSources = async () => {
+        console.log('--- Start setupSources ---');
         this.obs.Global.setOutputSource(1, this.scene);
         this.setSetting('Output', 'Track1Name', 'Mixed: all sources');
         let currentTrack = 2;
 
         this.getAudioDevices(byOS({ [OS.Windows]: 'wasapi_output_capture', [OS.Mac]: 'coreaudio_output_capture' }), 'desktop-audio').forEach((metadata: any) => {
-            if (metadata.device_id === 'default') return;
-            const source = this.obs.InputFactory.create(
-                byOS({ [OS.Windows]: 'wasapi_output_capture', [OS.Mac]: 'coreaudio_output_capture' }),
-                'desktop-audio',
-                { device_id: metadata.device_id },
-            );
-            this.setSetting('Output', `Track${currentTrack}Name`, metadata.name);
-            source.audioMixers = 1 | (1 << (currentTrack - 1)); // Bit mask to output to only tracks 1 and current track
-            this.obs.Global.setOutputSource(currentTrack, source);
-            currentTrack++;
+            console.log('metadata.device_id',metadata.device_id)
+            // if (metadata.device_id === 'default') return;
+            // const source = this.obs.InputFactory.create(
+            //     byOS({ [OS.Windows]: 'wasapi_output_capture', [OS.Mac]: 'coreaudio_output_capture' }),
+            //     'desktop-audio',
+            //     { device_id: metadata.device_id },
+            // );
+            // this.setSetting('Output', `Track${currentTrack}Name`, metadata.name);
+            // source.audioMixers = 1 | (1 << (currentTrack - 1)); // Bit mask to output to only tracks 1 and current track
+            // this.obs.Global.setOutputSource(currentTrack, source);
+            // currentTrack++;
         });
 
 
-        this.getAudioDevices(byOS({ [OS.Windows]: 'wasapi_input_capture', [OS.Mac]: 'coreaudio_input_capture' }), 'mic-audio').forEach((metadata: any) => {
-            if (metadata.device_id === 'default') return;
-            const source = this.obs.InputFactory.create(byOS({ [OS.Windows]: 'wasapi_input_capture', [OS.Mac]: 'coreaudio_input_capture' }), 'mic-audio', {
-                device_id: metadata.device_id,
-            });
-            this.setSetting('Output', `Track${currentTrack}Name`, metadata.name);
-            source.audioMixers = 1 | (1 << (currentTrack - 1)); // Bit mask to output to only tracks 1 and current track
-            this.obs.Global.setOutputSource(currentTrack, source);
-            currentTrack++;
-        });
+        // this.getAudioDevices(byOS({ [OS.Windows]: 'wasapi_input_capture', [OS.Mac]: 'coreaudio_input_capture' }), 'mic-audio').forEach((metadata: any) => {
+        //     if (metadata.device_id === 'default') return;
+        //     const source = this.obs.InputFactory.create(byOS({ [OS.Windows]: 'wasapi_input_capture', [OS.Mac]: 'coreaudio_input_capture' }), 'mic-audio', {
+        //         device_id: metadata.device_id,
+        //     });
+        //     this.setSetting('Output', `Track${currentTrack}Name`, metadata.name);
+        //     source.audioMixers = 1 | (1 << (currentTrack - 1)); // Bit mask to output to only tracks 1 and current track
+        //     this.obs.Global.setOutputSource(currentTrack, source);
+        //     currentTrack++;
+        // });
 
-        this.setSetting('Output', 'RecTracks', parseInt('1'.repeat(currentTrack - 1), 2)); // Bit mask of used tracks: 1111 to use first four (from available six)
+        // this.setSetting('Output', 'RecTracks', parseInt('1'.repeat(currentTrack - 1), 2)); // Bit mask of used tracks: 1111 to use first four (from available six)
+
+        console.log('--- End setupSources ---');
     }
 
     setupPreview = async (bounds: any) => {
